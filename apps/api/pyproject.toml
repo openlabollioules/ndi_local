@@ -1,0 +1,68 @@
+[project]
+name = "ndi-nl2sql-api"
+version = "0.1.0"
+description = "NL-to-SQL agent backend"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi[standard]",
+  "uvicorn[standard]",
+  "pydantic-settings",
+  "python-multipart",
+  "python-dotenv",
+  "httpx",
+  "duckdb",
+  "qdrant-client",
+  "langchain",
+  "langchain-community",
+  "langchain-core",
+  "langgraph",
+  "langchain-openai",
+  "openai",
+  "pandas",
+  "polars",
+  "pyarrow",
+  "openpyxl",
+  "sqlparse",
+  "slowapi",
+  "redis",
+  "pillow",
+  "tabulate>=0.9.0",
+  "chardet",
+]
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+packages = ["ndi_api"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+src = ["src"]
+
+[tool.ruff.lint]
+select = [
+  "E",    # pycodestyle errors
+  "W",    # pycodestyle warnings
+  "F",    # pyflakes
+  "I",    # isort
+  "UP",   # pyupgrade
+  "B",    # flake8-bugbear
+  "SIM",  # flake8-simplify
+]
+ignore = [
+  "E501",   # line too long (handled by formatter)
+  "B008",   # do not perform function call in argument defaults (Depends)
+  "SIM108", # ternary operator (readability preference)
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["ndi_api"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

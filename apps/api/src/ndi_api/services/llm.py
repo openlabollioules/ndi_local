@@ -245,6 +245,19 @@ def stream_llm_call(prompt: str, llm: ChatOpenAI | None = None) -> Generator[Str
                 if remaining.strip():
                     content_parts.append(remaining)
                     yield ("content", remaining)
+            elif _CONTENT_START_RE.search(buf):
+                # No </think> but we see SQL/JSON — model doesn't use closing tags.
+                # Split: everything before the SQL keyword is thinking, rest is content.
+                sql_match = re.search(r"(?:SELECT\b|WITH\b|\{|\|)", buf, re.IGNORECASE)
+                if sql_match:
+                    thinking_part = buf[: sql_match.start()]
+                    if thinking_part.strip():
+                        yield ("thinking", thinking_part)
+                    content_start = buf[sql_match.start() :]
+                    content_parts.append(content_start)
+                    yield ("content", content_start)
+                    in_thinking = False
+                    buf = ""
             else:
                 # Yield thinking as it arrives (but keep last few chars in case
                 # "</think>" is split across chunks)
@@ -260,10 +273,19 @@ def stream_llm_call(prompt: str, llm: ChatOpenAI | None = None) -> Generator[Str
     # Flush anything remaining
     if buf:
         if in_thinking:
-            # Thinking never closed — strip any partial close tag and yield
-            cleaned = buf.replace("</think>", "").replace("</thin", "").replace("</thi", "")
-            if cleaned.strip():
-                yield ("thinking", cleaned)
+            # Thinking never closed — check if there's SQL content in the buffer
+            sql_match = re.search(r"(SELECT\b|WITH\b\s+\w+\s+AS)", buf, re.IGNORECASE)
+            if sql_match:
+                thinking_part = buf[: sql_match.start()]
+                if thinking_part.strip():
+                    yield ("thinking", thinking_part)
+                content_part = buf[sql_match.start() :]
+                content_parts.append(content_part)
+                yield ("content", content_part)
+            else:
+                cleaned = buf.replace("</think>", "").replace("</thin", "").replace("</thi", "")
+                if cleaned.strip():
+                    yield ("thinking", cleaned)
         else:
             content_parts.append(buf)
             yield ("content", buf)
@@ -312,6 +334,7 @@ def get_llm() -> ChatOpenAI:
             api_key=settings.llm_api_key,
             model=model,
             max_tokens=None,  # let the server decide based on context
+            default_headers={"Accept": "application/json"},
         )
         _llm_model_key = model
         _release_llm(old)
@@ -335,6 +358,7 @@ def get_indexing_llm() -> ChatOpenAI:
             api_key=settings.llm_api_key,
             model=model,
             max_tokens=None,  # let the server decide based on context
+            default_headers={"Accept": "application/json"},
         )
         _release_llm(old)
     return _indexing_llm_instance
@@ -352,6 +376,7 @@ def get_embeddings() -> OpenAIEmbeddings:
             api_key=settings.effective_embedding_api_key,
             model=settings.embedding_model,
             check_embedding_ctx_length=False,  # skip tiktoken download
+            default_headers={"Accept": "application/json"},
         )
     return _embeddings_instance
 
@@ -377,6 +402,7 @@ def get_vision_llm() -> ChatOpenAI:
             api_key=settings.llm_api_key,
             model=model,
             max_tokens=None,  # let the server decide based on context
+            default_headers={"Accept": "application/json"},
         )
         _release_llm(old)
     return _vision_llm_instance

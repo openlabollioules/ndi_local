@@ -36,7 +36,9 @@ function getApiKey(): string | undefined {
 
 // Construit les headers avec la clé API si disponible
 function buildHeaders(contentType = true): Record<string, string> {
-  const headers: Record<string, string> = {};
+  const headers: Record<string, string> = {
+    Accept: "application/json, text/event-stream",
+  };
   if (contentType) {
     headers["Content-Type"] = "application/json";
   }

@@ -36,6 +36,7 @@ def _create_client() -> QdrantClient:
         url=settings.qdrant_url,
         api_key=settings.qdrant_api_key,
         timeout=30,
+        prefer_grpc=False,
     )
 
 

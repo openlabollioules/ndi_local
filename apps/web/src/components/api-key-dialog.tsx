@@ -12,11 +12,14 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { getConfig } from "@/lib/api";
 
 export function ApiKeyDialog() {
   const [apiKey, setApiKey] = useState("");
   const [isOpen, setIsOpen] = useState(false);
   const [hasKey, setHasKey] = useState(false);
+  const [authEnabled, setAuthEnabled] = useState(true);
+  const [authRequired, setAuthRequired] = useState(true);
 
   useEffect(() => {
     const stored = localStorage.getItem("ndi_api_key");
@@ -24,6 +27,15 @@ export function ApiKeyDialog() {
       setApiKey(stored);
       setHasKey(true);
     }
+
+    void getConfig()
+      .then((config) => {
+        setAuthEnabled(config.auth_enabled);
+        setAuthRequired(config.auth_required);
+      })
+      .catch(() => {
+        // Keep safe defaults if backend is not reachable yet.
+      });
   }, []);
 
   const handleSave = () => {
@@ -43,24 +55,31 @@ export function ApiKeyDialog() {
     window.location.reload();
   };
 
+  if (!authEnabled) {
+    return (
+      <Button variant="outline" size="sm" disabled className="text-muted-foreground">
+        Mode local sans clé API
+      </Button>
+    );
+  }
+
+  const buttonLabel = hasKey ? "Clé API configurée" : authRequired ? "Clé API requise" : "Clé API optionnelle";
+  const buttonClassName = hasKey ? "text-green-600" : authRequired ? "text-amber-600" : "text-muted-foreground";
+  const description = authRequired
+    ? "Entrez votre clé API pour accéder aux fonctionnalités protégées. La clé est stockée localement dans votre navigateur."
+    : "Vous pouvez ajouter une clé API si votre environnement backend l'exige. La clé est stockée localement dans votre navigateur.";
+
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
-        <Button
-          variant="outline"
-          size="sm"
-          className={hasKey ? "text-green-600" : "text-amber-600"}
-        >
-          {hasKey ? "🔑 Clé API configurée" : "⚠️ Clé API requise"}
+        <Button variant="outline" size="sm" className={buttonClassName}>
+          {buttonLabel}
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
           <DialogTitle>Configuration de la clé API</DialogTitle>
-          <DialogDescription>
-            Entrez votre clé API pour accéder aux fonctionnalités protégées.
-            La clé est stockée localement dans votre navigateur.
-          </DialogDescription>
+          <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 py-4">
           <div className="grid gap-2">

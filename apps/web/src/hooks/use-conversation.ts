@@ -16,6 +16,7 @@ export interface ChatMessage {
   id: string;
   role: "user" | "assistant";
   content: string;
+  thinking?: string;
   type?: MessageType;
   query?: string;
   queryType?: "sql" | "nosql";
@@ -27,7 +28,6 @@ export interface ChatMessage {
   timestamp: Date;
   // Streaming state
   isStreaming?: boolean;
-  thinking?: string;
   status?: string;
 }
 
@@ -98,7 +98,7 @@ export function useConversation(): UseConversationReturn {
       await conversationQueryStream(
         {
           question,
-          conversation_id: conversationId || undefined,
+          conversation_id: activeConvId,
         },
         {
           onStatus: (status) => {
@@ -137,6 +137,7 @@ export function useConversation(): UseConversationReturn {
                   ? {
                       ...m,
                       content: result.answer || m.content,
+                      thinking: result.thinking ?? m.thinking,
                       type: (result.question_type as MessageType) || "query",
                       query: result.query,
                       queryType: result.query_type,
@@ -188,6 +189,7 @@ export function useConversation(): UseConversationReturn {
         id: generateId() + index,
         role: msg.role === "user" ? "user" : "assistant",
         content: msg.content,
+        thinking: msg.thinking,
         type: msg.intent as MessageType,
         query: msg.query,
         queryType: msg.query_type,
@@ -199,7 +201,9 @@ export function useConversation(): UseConversationReturn {
       setMessages(chatMessages);
       setConversationId(id);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Erreur lors du chargement");
+      const message = err instanceof Error ? err.message : "Erreur lors du chargement";
+      setError(message);
+      throw err instanceof Error ? err : new Error(message);
     } finally {
       setIsLoading(false);
     }

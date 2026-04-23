@@ -35,6 +35,12 @@ from ndi_api.settings import settings
 router = APIRouter(prefix="/conversation")
 
 
+def _infer_query_type(query: str | None) -> str | None:
+    if not query:
+        return None
+    return "nosql" if query.lstrip().startswith("{") else "sql"
+
+
 class QueryRequest(BaseModel):
     """Request for a conversational query."""
 
@@ -222,17 +228,61 @@ async def conversational_query_stream(request: QueryRequest):
     from fastapi.responses import StreamingResponse
 
     question = request.question
+    store = get_conversation_store()
+    session, _is_new = store.get_or_create(request.conversation_id)
 
     def event_generator():
+        session.add_message(
+            ConversationMessage(
+                role="user",
+                content=question,
+            )
+        )
+
+        thinking_parts: list[str] = []
+        final_answer: dict | None = None
+
         for event in run_nl_sql_stream(question):
             etype = event["event"]
             data = event["data"]
+
+            if etype == "thinking" and isinstance(data, str):
+                thinking_parts.append(data)
+            elif etype == "answer" and isinstance(data, dict):
+                query = data.get("query") or data.get("sql")
+                data = {
+                    **data,
+                    "conversation_id": session.id,
+                    "query": query,
+                    "query_type": data.get("query_type") or _infer_query_type(query),
+                    "question_type": data.get("question_type", "query"),
+                    "confidence": data.get("confidence", 1.0),
+                }
+                final_answer = data
+
             if isinstance(data, dict):
                 payload = _json.dumps(data, ensure_ascii=False)
             else:
                 # Escape newlines for SSE (each line must be prefixed with data:)
                 payload = str(data).replace("\n", "\\n")
             yield f"event: {etype}\ndata: {payload}\n\n"
+
+        if final_answer:
+            session.add_message(
+                ConversationMessage(
+                    role="assistant",
+                    content=final_answer.get("answer", ""),
+                    thinking=final_answer.get("thinking") or "".join(thinking_parts).strip() or None,
+                    query=final_answer.get("query"),
+                    query_type=final_answer.get("query_type"),
+                    results_count=final_answer.get("row_count"),
+                    analysis=final_answer.get("analysis_type"),
+                    intent=final_answer.get("question_type"),
+                )
+            )
+
+            if session.should_summarize():
+                session.summarize_old_messages()
 
     return StreamingResponse(
         event_generator(),
@@ -410,6 +460,7 @@ async def get_conversation_history(conversation_id: str) -> ConversationHistoryR
         {
             "role": msg.role,
             "content": msg.content,
+            "thinking": msg.thinking,
             "timestamp": msg.timestamp.isoformat(),
             "query": msg.query,
             "query_type": msg.query_type,

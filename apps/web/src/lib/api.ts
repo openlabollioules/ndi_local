@@ -345,6 +345,10 @@ export async function getConfig() {
     indexing_llm_model: string;
     embedding_model: string;
     llm_base_url: string;
+    llm_native_base_url: string;
+    llm_provider: string;
+    auth_enabled: boolean;
+    auth_required: boolean;
     database_mode: string;
   }>;
 }
@@ -562,6 +566,7 @@ export async function reindexSchema(): Promise<{
 export interface ConversationMessage {
   role: "user" | "assistant" | "system";
   content: string;
+  thinking?: string;
   timestamp?: string;
   query?: string;
   query_type?: "sql" | "nosql";
@@ -587,6 +592,7 @@ export interface ConversationQueryResponse {
   conversation_id: string;
   question_type: "query" | "follow_up" | "analysis" | "explanation";
   confidence: number;
+  thinking?: string;
   query?: string;
   query_type?: "sql" | "nosql";
   rows?: Record<string, unknown>[];

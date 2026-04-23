@@ -141,6 +141,19 @@ def _release_llm(instance: ChatOpenAI | None) -> None:
     del instance
 
 
+def _chat_openai_kwargs(model: str) -> dict:
+    kwargs = {
+        "base_url": settings.effective_llm_base_url,
+        "api_key": settings.llm_api_key,
+        "model": model,
+        "max_tokens": None,
+        "default_headers": {"Accept": "application/json"},
+    }
+    if "11434" in settings.llm_native_base_url and settings.llm_reasoning_effort:
+        kwargs["model_kwargs"] = {"reasoning_effort": settings.llm_reasoning_effort}
+    return kwargs
+
+
 # Regex to detect the opening of a thinking block
 _THINK_OPEN_RE = re.compile(r"(?:<think>|[Tt]hinking\s*[Pp]rocess\s*:?)")
 _THINK_CLOSE = "</think>"
@@ -156,6 +169,32 @@ from typing import Literal
 
 StreamEventType = Literal["thinking", "content"]
 StreamEvent = tuple[StreamEventType, str]
+
+
+def _extract_stream_chunks(chunk: object) -> list[StreamEvent]:
+    """Extract reasoning/content fragments from a LangChain streamed chunk.
+
+    Ollama's OpenAI-compatible endpoint emits reasoning tokens in a dedicated
+    ``reasoning`` field while regular answer tokens stay in ``content``.
+    """
+    events: list[StreamEvent] = []
+
+    reasoning = None
+    content = None
+
+    if hasattr(chunk, "additional_kwargs") and isinstance(chunk.additional_kwargs, dict):
+        reasoning = chunk.additional_kwargs.get("reasoning")
+        content = chunk.additional_kwargs.get("content")
+
+    if content is None and hasattr(chunk, "content"):
+        content = chunk.content
+
+    if isinstance(reasoning, str) and reasoning:
+        events.append(("thinking", reasoning))
+    if isinstance(content, str) and content:
+        events.append(("content", content))
+
+    return events
 
 
 def stream_llm_call(prompt: str, llm: ChatOpenAI | None = None) -> Generator[StreamEvent, None, str]:
@@ -177,7 +216,22 @@ def stream_llm_call(prompt: str, llm: ChatOpenAI | None = None) -> Generator[Str
 
     # --- detection phase: buffer up to _DETECT_WINDOW chars ----------------
     for chunk in token_iter:
-        token = chunk.content if hasattr(chunk, "content") else str(chunk)
+        extracted = _extract_stream_chunks(chunk)
+        if not extracted:
+            continue
+
+        if extracted[0][0] == "thinking":
+            detected = True
+            in_thinking = True
+            for event_type, token in extracted:
+                if event_type == "thinking":
+                    yield ("thinking", token)
+                elif token:
+                    content_parts.append(token)
+                    yield ("content", token)
+            break
+
+        token = "".join(token for event_type, token in extracted if event_type == "content")
         if not token:
             continue
         detect_buf += token
@@ -225,7 +279,15 @@ def stream_llm_call(prompt: str, llm: ChatOpenAI | None = None) -> Generator[Str
     # --- streaming phase: we know whether we're in thinking or content -----
     buf = ""
     for chunk in token_iter:
-        token = chunk.content if hasattr(chunk, "content") else str(chunk)
+        extracted = _extract_stream_chunks(chunk)
+        if not extracted:
+            continue
+
+        for event_type, token in extracted:
+            if event_type == "thinking":
+                yield ("thinking", token)
+
+        token = "".join(token for event_type, token in extracted if event_type == "content")
         if not token:
             continue
 
@@ -329,13 +391,7 @@ def get_llm() -> ChatOpenAI:
     model = get_current_model()
     if _llm_instance is None or _llm_model_key != model:
         old = _llm_instance
-        _llm_instance = ChatOpenAI(
-            base_url=settings.llm_base_url,
-            api_key=settings.llm_api_key,
-            model=model,
-            max_tokens=None,  # let the server decide based on context
-            default_headers={"Accept": "application/json"},
-        )
+        _llm_instance = ChatOpenAI(**_chat_openai_kwargs(model))
         _llm_model_key = model
         _release_llm(old)
     return _llm_instance
@@ -353,13 +409,7 @@ def get_indexing_llm() -> ChatOpenAI:
     model = settings.indexing_llm_model or settings.llm_model
     if _indexing_llm_instance is None or _indexing_llm_instance.model_name != model:
         old = _indexing_llm_instance
-        _indexing_llm_instance = ChatOpenAI(
-            base_url=settings.llm_base_url,
-            api_key=settings.llm_api_key,
-            model=model,
-            max_tokens=None,  # let the server decide based on context
-            default_headers={"Accept": "application/json"},
-        )
+        _indexing_llm_instance = ChatOpenAI(**_chat_openai_kwargs(model))
         _release_llm(old)
     return _indexing_llm_instance
 
@@ -397,12 +447,6 @@ def get_vision_llm() -> ChatOpenAI:
     model = settings.vision_model or settings.llm_model
     if _vision_llm_instance is None or _vision_llm_instance.model_name != model:
         old = _vision_llm_instance
-        _vision_llm_instance = ChatOpenAI(
-            base_url=settings.llm_base_url,
-            api_key=settings.llm_api_key,
-            model=model,
-            max_tokens=None,  # let the server decide based on context
-            default_headers={"Accept": "application/json"},
-        )
+        _vision_llm_instance = ChatOpenAI(**_chat_openai_kwargs(model))
         _release_llm(old)
     return _vision_llm_instance

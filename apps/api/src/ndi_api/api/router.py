@@ -3,7 +3,6 @@ from fastapi import APIRouter, Depends
 from ndi_api.api.routes.conformity import router as conformity_router
 from ndi_api.api.routes.conversation import router as conversation_router
 from ndi_api.api.routes.data import router as data_router
-from ndi_api.api.routes.eval import router as eval_router
 from ndi_api.api.routes.export import router as export_router
 from ndi_api.api.routes.health import admin_router as health_admin_router
 from ndi_api.api.routes.health import router as health_router
@@ -34,7 +33,6 @@ api_router.include_router(relations_router, tags=["relations"], dependencies=[De
 api_router.include_router(data_router, tags=["data"], dependencies=[Depends(verify_api_key)])
 api_router.include_router(export_router, tags=["export"], dependencies=[Depends(verify_api_key)])
 api_router.include_router(vectorstore_router, tags=["vectorstore"], dependencies=[Depends(verify_api_key)])
-api_router.include_router(eval_router, tags=["evaluation"], dependencies=[Depends(verify_api_key)])
 api_router.include_router(conversation_router, tags=["conversation"], dependencies=[Depends(verify_api_key)])
 api_router.include_router(skills_router, tags=["skills"], dependencies=[Depends(verify_api_key)])
 api_router.include_router(images_router, tags=["images"], dependencies=[Depends(verify_api_key)])

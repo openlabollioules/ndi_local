@@ -16,9 +16,11 @@ export interface SerializedChatMessage {
   id: string;
   role: "user" | "assistant";
   content: string;
+  thinking?: string;
   type?: MessageType;
   query?: string;
   queryType?: "sql" | "nosql";
+  rows?: Record<string, unknown>[];
   rowCount?: number;
   analysisType?: string;
   sampleSize?: number;
@@ -40,8 +42,8 @@ export interface ConversationItem {
 export type { ChatMessage, MessageType } from "@/hooks/use-conversation";
 
 function serializeMessages(msgs: ChatMessage[]): SerializedChatMessage[] {
-  return msgs.map(({ id, role, content, type, query, queryType, rowCount, analysisType, sampleSize, chartConfig, timestamp }) => ({
-    id, role, content, type, query, queryType, rowCount, analysisType, sampleSize, chartConfig,
+  return msgs.map(({ id, role, content, thinking, type, query, queryType, rows, rowCount, analysisType, sampleSize, chartConfig, timestamp }) => ({
+    id, role, content, thinking, type, query, queryType, rows, rowCount, analysisType, sampleSize, chartConfig,
     timestamp: timestamp instanceof Date ? timestamp.toISOString() : String(timestamp),
   }));
 }
@@ -96,6 +98,7 @@ export function ChatInterface({
     error,
     sendMessage,
     sendImageMessage,
+    loadHistory,
     restoreConversation,
     clearConversation,
     regenerateLastMessage,
@@ -130,17 +133,27 @@ export function ChatInterface({
     if (selectedConversationId === liveConversationId) return;
 
     const conv = conversations.find(c => c.id === selectedConversationId);
-    if (conv?.messages?.length) {
-      restoreConversation(conv.id, deserializeMessages(conv.messages));
-    }
-  }, [selectedConversationId, conversations, liveConversationId, restoreConversation, clearConversation]);
+
+    void (async () => {
+      try {
+        await loadHistory(selectedConversationId);
+      } catch {
+        if (conv?.messages?.length) {
+          restoreConversation(conv.id, deserializeMessages(conv.messages));
+        }
+      }
+    })();
+  }, [selectedConversationId, conversations, liveConversationId, loadHistory, restoreConversation, clearConversation]);
 
   // Sync all messages to parent on every change
   useEffect(() => {
     if (!liveConversationId || liveMessages.length === 0) return;
     if (!onConversationUpdate) return;
 
-    const snapshot = `${liveConversationId}-${liveMessages.length}`;
+    const snapshot = JSON.stringify({
+      id: liveConversationId,
+      messages: serializeMessages(liveMessages),
+    });
     if (snapshot === lastSnapshotRef.current) return;
     lastSnapshotRef.current = snapshot;
 
@@ -500,6 +513,8 @@ function MessageBubble({ message, isLast, onRegenerate }: MessageBubbleProps) {
 
   const activeChart = localChartConfig ?? message.chartConfig ?? null;
   const hasRows = message.rows && message.rows.length > 0;
+  const thinkingText = message.thinking?.trim() ?? "";
+  const hasThinking = thinkingText.length > 0;
 
   return (
     <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
@@ -524,20 +539,23 @@ function MessageBubble({ message, isLast, onRegenerate }: MessageBubbleProps) {
           </div>
         )}
 
-        {/* Thinking block (collapsible chain-of-thought) */}
-        {message.thinking && (
+        {/* Thinking block */}
+        {hasThinking && (
           <details className="mb-2" open={message.isStreaming}>
             <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground transition-colors flex items-center gap-1 select-none">
               <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="m9 18 6-6-6-6"/>
+                <path d="m9 18 6-6-6-6" />
               </svg>
-              Raisonnement
+              <span>Raisonnement</span>
+              <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                {thinkingText.length} car.
+              </span>
               {message.isStreaming && (
-                <span className="ml-1 inline-block h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse" />
+                <span className="inline-block h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse" />
               )}
             </summary>
             <div className="mt-1 p-2 rounded border border-border bg-muted/30 text-xs text-muted-foreground whitespace-pre-wrap max-h-[200px] overflow-y-auto font-mono leading-relaxed">
-              {message.thinking}
+              {thinkingText}
               {message.isStreaming && <span className="animate-pulse">|</span>}
             </div>
           </details>

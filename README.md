@@ -2,6 +2,32 @@
 
 Application d'interrogation de donnees en langage naturel (francais). Convertit des questions en requetes **SQL** (DuckDB) ou **NoSQL** (JSON/MongoDB-style) via un pipeline LLM (LangGraph).
 
+Mode recommande : **web + api + qdrant dans Docker**, avec **Ollama lance sur le Mac hote**.
+
+## Demarrage en 2 minutes
+
+```bash
+# 1. Lancer Ollama sur le Mac
+ollama serve
+ollama pull qwen3.6:35b
+ollama pull bge-m3:latest
+
+# 2. Configurer l'app
+cd apps/api
+cp .env.example .env
+
+# 3. Lancer la stack
+cd ../..
+docker compose up -d --build
+```
+
+Acces :
+
+- Frontend : `http://localhost:3001`
+- API : `http://localhost:8001/api`
+- Docs API : `http://localhost:8001/docs`
+- Qdrant : `http://localhost:6333/dashboard`
+
 ---
 
 ## Table des matieres
@@ -10,14 +36,15 @@ Application d'interrogation de donnees en langage naturel (francais). Convertit 
 2. [Architecture](#architecture)
 3. [Installation rapide](#installation-rapide)
 4. [Configuration](#configuration)
-5. [Lancement](#lancement)
-6. [Utilisation](#utilisation)
-7. [Fonctionnalites](#fonctionnalites)
-8. [API Endpoints](#api-endpoints)
-9. [Skills](#skills)
-10. [Modes SQL / NoSQL](#modes-sql--nosql)
-11. [Logs et monitoring](#logs-et-monitoring)
-12. [Troubleshooting](#troubleshooting)
+5. [Modes de lancement](#modes-de-lancement)
+6. [Ports et acces](#ports-et-acces)
+7. [Utilisation](#utilisation)
+8. [Fonctionnalites](#fonctionnalites)
+9. [API Endpoints](#api-endpoints)
+10. [Skills](#skills)
+11. [Modes SQL / NoSQL](#modes-sql--nosql)
+12. [Logs et monitoring](#logs-et-monitoring)
+13. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -25,25 +52,8 @@ Application d'interrogation de donnees en langage naturel (francais). Convertit 
 
 | Outil | Version | Usage |
 |-------|---------|-------|
-| **Python** | 3.12+ | Backend API |
-| **uv** | latest | Gestionnaire de dependances Python |
-| **Node.js** | 18+ | Frontend |
-| **Docker** ou **Podman** | recent | Qdrant (base vectorielle) |
-| **Serveur LLM** (OpenAI-compatible) | - | Generation de requetes et embeddings |
-
-### Serveur LLM
-
-NDI necessite un serveur exposant une API OpenAI-compatible (`/v1/chat/completions` et `/v1/embeddings`). Options :
-
-- **vLLM** (recommande pour la production)
-- **Ollama** (developpement local)
-- **LiteLLM**, **TGI**, ou tout serveur compatible OpenAI
-
-### Installation de uv
-
-```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
-```
+| **Docker** ou **Podman** | recent | Stack conteneurisee (web, api, qdrant) |
+| **Ollama** | latest | LLM local sur Mac pour generation et embeddings |
 
 ---
 
@@ -51,11 +61,10 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 
 ```
 naval_data_intelligence/
-├── docker-compose.yml              # Service Qdrant
+├── docker-compose.yml              # Stack conteneurisee (web + api + qdrant)
 ├── apps/
 │   ├── api/                        # Backend Python (FastAPI)
 │   │   ├── pyproject.toml          # Dependances Python
-│   │   ├── uv.lock                 # Versions verrouillees
 │   │   ├── .env                    # Variables d'environnement
 │   │   ├── .env.example            # Template de configuration
 │   │   ├── agents/
@@ -110,7 +119,6 @@ naval_data_intelligence/
 │   │   │       ├── base.py         # Classe abstraite SkillBase
 │   │   │       ├── router.py       # Routage intent -> skill
 │   │   │       └── registry.py     # Auto-decouverte des skills
-│   │   └── tests/                  # Tests unitaires (pytest)
 │   └── web/                        # Frontend React/Next.js
 │       ├── package.json
 │       ├── src/
@@ -148,28 +156,96 @@ git clone <url-du-repo>
 cd naval_data_intelligence
 ```
 
-### 2. Lancer Qdrant (base vectorielle)
+### 2. Preparer Ollama sur le Mac hote
 
 ```bash
-docker compose up -d
+ollama serve
+ollama pull qwen3:14b
+ollama pull nomic-embed-text
+ollama pull llava
 ```
 
-> **Environnement securise (pas d'acces registre)** : si l'image Qdrant est deja presente localement, le `docker-compose.yml` utilise `pull_policy: never` pour eviter tout pull distant.
-
-### 3. Installer le backend
+### 3. Configurer l'application
 
 ```bash
 cd apps/api
 cp .env.example .env
-# Editer .env avec vos endpoints LLM (voir section Configuration)
-uv sync
+# Editer .env pour votre instance Ollama locale si besoin
 ```
 
-### 4. Installer le frontend
+### 4. Lancer toute la stack conteneurisee
 
 ```bash
-cd apps/web
-npm install
+cd ../..
+docker compose up -d --build
+```
+
+Le `docker-compose.yml` lance :
+- `web` sur `http://localhost:3001`
+- `api` sur `http://localhost:8001`
+- `qdrant` sur `http://localhost:6333`
+
+Sur macOS, l'API conteneurisee contacte Ollama via `http://host.docker.internal:11434`.
+
+> Ports actuels du projet : `3001` pour le frontend et `8001` pour l'API. Cela evite les conflits avec d'autres services locaux deja presents sur `3000` et `8000`.
+
+> **Environnement securise (pas d'acces registre)** : si l'image Qdrant est deja presente localement, le `docker-compose.yml` utilise `pull_policy: never` pour eviter tout pull distant.
+
+---
+
+## Modes de lancement
+
+### Mode unique recommande : stack Docker standalone
+
+Le projet est maintenant pense pour un usage standalone local :
+
+- `web`, `api` et `qdrant` tournent en conteneurs
+- `ollama` tourne sur l'hote macOS
+- l'API conteneurisee joint Ollama via `host.docker.internal`
+
+Commandes :
+
+```bash
+docker compose up -d --build
+docker compose down
+```
+
+---
+
+## Ports et acces
+
+### Ports actuels du projet
+
+| Service | Port hote | URL |
+|---------|-----------|-----|
+| **Frontend NDI** | `3001` | http://localhost:3001 |
+| **API NDI** | `8001` | http://localhost:8001/api |
+| **Docs API** | `8001` | http://localhost:8001/docs |
+| **Qdrant** | `6333` | http://localhost:6333/dashboard |
+| **Qdrant gRPC** | `6334` | `localhost:6334` |
+
+### Pourquoi `3001` et `8001`
+
+Le projet est actuellement configure ainsi pour eviter des conflits locaux frequents :
+
+- `3000` est souvent utilise par d'autres interfaces web locales
+- `8000` est souvent utilise par d'autres APIs ou services Python
+
+Si vous n'avez aucun conflit, vous pouvez remettre `3000` et `8000` dans `docker-compose.yml`.
+
+### Conflits frequents
+
+Exemples observes sur cette machine :
+
+- `open-webui` sur `3000`
+- `duckdb-uploader` sur `8000`
+
+Pour diagnostiquer un conflit :
+
+```bash
+docker ps
+lsof -nP -iTCP:3000 -sTCP:LISTEN
+lsof -nP -iTCP:8000 -sTCP:LISTEN
 ```
 
 ---
@@ -182,9 +258,9 @@ Toutes les variables sont dans `apps/api/.env` avec le prefixe `NDI_`.
 
 | Variable | Description | Exemple |
 |----------|-------------|---------|
-| `NDI_LLM_BASE_URL` | URL du serveur LLM (OpenAI-compatible) | `http://192.168.1.100:8000/v1` |
-| `NDI_LLM_MODEL` | Modele LLM pour la generation de requetes | `/models2/qwen27b_awq` |
-| `NDI_EMBEDDING_MODEL` | Modele d'embeddings | `/models2/bge-m3` |
+| `NDI_LLM_BASE_URL` | URL Ollama locale ou URL OpenAI-compatible | `http://localhost:11434` |
+| `NDI_LLM_MODEL` | Modele LLM pour la generation de requetes | `qwen3:14b` |
+| `NDI_EMBEDDING_MODEL` | Modele d'embeddings | `nomic-embed-text` |
 
 ### Variables optionnelles
 
@@ -193,7 +269,7 @@ Toutes les variables sont dans `apps/api/.env` avec le prefixe `NDI_`.
 | **Serveur** | | |
 | `NDI_API_PREFIX` | `/api` | Prefixe des routes API |
 | `NDI_ENVIRONMENT` | `local` | Environnement (`local`, `production`) |
-| `NDI_ALLOWED_ORIGINS` | `["http://localhost:3000"]` | Origines CORS autorisees (JSON array) |
+| `NDI_ALLOWED_ORIGINS` | `["http://localhost:3001","http://127.0.0.1:3001"]` | Origines CORS autorisees (JSON array) |
 | **Base de donnees** | | |
 | `NDI_DATABASE_MODE` | `sql` | Mode : `sql` (DuckDB) ou `nosql` (JSON) |
 | `NDI_DATA_DIR` | `data` | Repertoire de stockage local |
@@ -203,7 +279,7 @@ Toutes les variables sont dans `apps/api/.env` avec le prefixe `NDI_`.
 | `NDI_QDRANT_API_KEY` | *(vide)* | Cle API Qdrant (si auth activee) |
 | `NDI_QDRANT_COLLECTION` | `schema_index` | Nom de la collection vectorielle |
 | **LLM** | | |
-| `NDI_LLM_API_KEY` | `EMPTY` | Cle API du serveur LLM |
+| `NDI_LLM_API_KEY` | `ollama` | Cle API du serveur LLM |
 | `NDI_VISION_MODEL` | *(vide)* | Modele vision pour analyse d'images |
 | `NDI_INDEXING_LLM_MODEL` | *(vide)* | Modele dedie a l'indexation (descriptions de colonnes) |
 | `NDI_LLM_CONTEXT_LENGTH` | `65536` | Taille de la fenetre de contexte (tokens) |
@@ -227,51 +303,41 @@ Toutes les variables sont dans `apps/api/.env` avec le prefixe `NDI_`.
 ### Exemple minimal (.env)
 
 ```env
-# LLM
-NDI_LLM_BASE_URL=http://localhost:8000/v1
-NDI_LLM_API_KEY=EMPTY
+# LLM local via Ollama
+NDI_LLM_BASE_URL=http://localhost:11434
+NDI_LLM_API_KEY=ollama
 NDI_LLM_MODEL=qwen3:14b
 
-# Embeddings
-NDI_EMBEDDING_BASE_URL=http://localhost:8000/v1
-NDI_EMBEDDING_API_KEY=EMPTY
-NDI_EMBEDDING_MODEL=bge-m3
+# Embeddings via Ollama
+NDI_EMBEDDING_BASE_URL=http://localhost:11434
+NDI_EMBEDDING_API_KEY=ollama
+NDI_EMBEDDING_MODEL=nomic-embed-text
 
-# Qdrant
+# Qdrant local
 NDI_QDRANT_URL=http://localhost:6333
 
-# Donnees
+# App locale
+NDI_AUTH_ENABLED=false
 NDI_DATA_DIR=data
 NDI_DATABASE_MODE=sql
 ```
 
----
-
-## Lancement
-
-### Demarrer tous les services
+### Demarrage Ollama sur Mac
 
 ```bash
-# Terminal 1 : Qdrant
-docker compose up -d
-
-# Terminal 2 : Backend API (port 8000)
-cd apps/api
-uv run uvicorn src.ndi_api.main:app --reload --host 0.0.0.0 --port 8000
-
-# Terminal 3 : Frontend (port 3000)
-cd apps/web
-npm run dev
+ollama serve
+ollama pull qwen3:14b
+ollama pull nomic-embed-text
+ollama pull llava
 ```
 
-### Acces
+---
 
-| Service | URL |
-|---------|-----|
-| **Frontend** | http://localhost:3000 |
-| **API** | http://localhost:8000/api |
-| **Documentation OpenAPI** | http://localhost:8000/docs |
-| **Qdrant Dashboard** | http://localhost:6333/dashboard |
+## Notes de connectivite
+
+- Le frontend conteneurise appelle l'API via `http://localhost:8001/api` car c'est l'URL vue par le navigateur.
+- Le backend conteneurise appelle Qdrant via `http://qdrant:6333`.
+- Le backend conteneurise appelle Ollama sur le Mac via `http://host.docker.internal:11434`.
 
 ---
 
@@ -341,7 +407,7 @@ Question utilisateur
 
 | Methode | Endpoint | Description |
 |---------|----------|-------------|
-| GET | `/api/health` | Etat de l'API (liveness, sans auth) |
+| GET | `/api/health/health` | Etat de l'API (liveness, sans auth) |
 | GET | `/api/health/config` | Configuration courante |
 | GET | `/api/health/models` | Modeles LLM disponibles |
 | POST | `/api/health/model` | Changer le modele LLM (temporaire) |
@@ -416,7 +482,7 @@ Question utilisateur
 | POST | `/api/export/xlsx` | Exporter en Excel |
 | POST | `/api/export/parquet` | Exporter en Parquet |
 
-### Conformite et evaluation
+### Conformite
 
 | Methode | Endpoint | Description |
 |---------|----------|-------------|
@@ -471,7 +537,7 @@ Chaque skill est compose de :
 Changement temporaire via API :
 
 ```bash
-curl -X POST http://localhost:8000/api/health/database/mode \
+curl -X POST http://localhost:8001/api/health/database/mode \
   -H "Content-Type: application/json" \
   -d '{"mode": "nosql"}'
 ```
@@ -503,7 +569,7 @@ Les logs sont dans `apps/api/logs/` :
 ### Metriques de performance
 
 ```bash
-curl http://localhost:8000/api/health/performance
+curl http://localhost:8001/api/health/performance
 ```
 
 Retourne les statistiques par etape du pipeline : `retrieval_ms`, `reranking_ms`, `sql_generate_ms`, `sql_execute_ms`, `sql_correct_ms`, `response_ms` (count, avg, min, max, p95).
@@ -540,13 +606,13 @@ Si le probleme persiste, verifier les regles dans `apps/api/agents/skills/sql-qu
 Verifier que l'URL du backend est autorisee dans `NDI_ALLOWED_ORIGINS` :
 
 ```env
-NDI_ALLOWED_ORIGINS=["http://localhost:3000","http://127.0.0.1:3000"]
+NDI_ALLOWED_ORIGINS=["http://localhost:3001","http://127.0.0.1:3001"]
 ```
 
 ### Cache obsolete apres modification des donnees
 
 ```bash
-curl -X POST http://localhost:8000/api/health/cache/invalidate
+curl -X POST http://localhost:8001/api/health/cache/invalidate
 ```
 
 ### Reindexer le schema apres un nouvel import
@@ -554,5 +620,5 @@ curl -X POST http://localhost:8000/api/health/cache/invalidate
 Via l'interface (onglet Donnees > Indexer) ou via l'API :
 
 ```bash
-curl -X POST http://localhost:8000/api/index/reindex
+curl -X POST http://localhost:8001/api/index/reindex
 ```

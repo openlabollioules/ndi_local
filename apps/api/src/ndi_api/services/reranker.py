@@ -49,7 +49,7 @@ class EmbeddingReranker:
             headers["Authorization"] = f"Bearer {self.api_key}"
 
         resp = httpx.post(
-            f"{self.base_url}/embeddings",
+            f"{self.base_url.rstrip('/')}/embeddings",
             headers=headers,
             json={"model": self.model, "input": texts},
             timeout=60.0,

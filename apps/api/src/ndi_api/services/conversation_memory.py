@@ -19,6 +19,7 @@ class ConversationMessage:
     role: Literal["user", "assistant", "system"]
     content: str
     timestamp: datetime = field(default_factory=datetime.utcnow)
+    thinking: str | None = None
     # Optional metadata
     query: str | None = None  # SQL/NoSQL generated
     query_type: Literal["sql", "nosql"] | None = None

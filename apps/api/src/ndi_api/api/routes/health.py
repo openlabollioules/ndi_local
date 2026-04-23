@@ -33,37 +33,67 @@ def cache_stats() -> dict:
 
 
 @admin_router.get("/config")
-def get_config() -> dict[str, str]:
+def get_config() -> dict:
     return {
         "llm_model": get_current_model(),
         "indexing_llm_model": settings.indexing_llm_model or get_current_model(),
         "embedding_model": settings.embedding_model,
-        "llm_base_url": settings.llm_base_url,
+        "llm_base_url": settings.effective_llm_base_url,
+        "llm_native_base_url": settings.llm_native_base_url,
+        "auth_enabled": settings.auth_enabled,
+        "auth_required": settings.auth_required,
+        "llm_provider": "ollama" if "11434" in settings.llm_native_base_url else "openai-compatible",
         "database_mode": settings.database_mode,
     }
 
 
 @admin_router.get("/models")
 async def list_models() -> dict:
-    """Liste tous les modèles disponibles sur le serveur LLM (OpenAI-compatible)."""
+    """Liste tous les modèles disponibles sur le serveur LLM.
+
+    Essaie d'abord ``/v1/models`` puis fallback sur ``/api/tags`` pour Ollama.
+    """
+    openai_error = "Échec de /v1/models"
     try:
         headers = {}
         if settings.llm_api_key and settings.llm_api_key != "EMPTY":
             headers["Authorization"] = f"Bearer {settings.llm_api_key}"
 
         async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.get(
-                f"{settings.llm_base_url}/models",
+            openai_response = await client.get(
+                f"{settings.effective_llm_base_url.rstrip('/')}/models",
                 headers=headers,
             )
-            response.raise_for_status()
-            data = response.json()
-            models = [m["id"] for m in data.get("data", [])]
-            return {"models": models, "current": get_current_model()}
+            openai_response.raise_for_status()
+            data = openai_response.json()
+            models = [m["id"] for m in data.get("data", []) if m.get("id")]
+            if models:
+                return {"models": models, "current": get_current_model()}
+    except httpx.HTTPStatusError as e:
+        openai_error = f"{e.response.status_code} sur /v1/models"
     except httpx.TimeoutException:
         raise HTTPException(status_code=504, detail="Timeout lors de la connexion au serveur LLM.")
     except httpx.RequestError as e:
-        raise HTTPException(status_code=503, detail=f"Impossible de contacter le serveur LLM: {str(e)}")
+        openai_error = str(e)
+    else:
+        openai_error = "Aucun modèle retourné par /v1/models"
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            ollama_response = await client.get(
+                f"{settings.llm_native_base_url.rstrip('/')}/api/tags",
+            )
+            ollama_response.raise_for_status()
+            data = ollama_response.json()
+            models = [m["name"] for m in data.get("models", []) if m.get("name")]
+            return {"models": models, "current": get_current_model()}
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail="Timeout lors de la connexion à Ollama.")
+    except httpx.RequestError as e:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Impossible de contacter le serveur LLM: {openai_error}; fallback Ollama: {str(e)}",
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erreur: {str(e)}")
 

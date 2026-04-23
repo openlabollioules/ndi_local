@@ -1,4 +1,5 @@
 from pathlib import Path
+from urllib.parse import urlsplit, urlunsplit
 
 from dotenv import load_dotenv
 from pydantic import Field
@@ -7,6 +8,26 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # Charger le fichier .env depuis le répertoire de l'API
 env_path = Path(__file__).parent.parent.parent / ".env"
 load_dotenv(env_path)
+
+
+def _normalize_openai_base_url(url: str) -> str:
+    """Normalize a model server URL to an OpenAI-compatible ``.../v1`` base."""
+    stripped = url.strip().rstrip("/")
+    parsed = urlsplit(stripped)
+    path = parsed.path.rstrip("/")
+    if not path.endswith("/v1"):
+        path = f"{path}/v1" if path else "/v1"
+    return urlunsplit((parsed.scheme, parsed.netloc, path, parsed.query, parsed.fragment))
+
+
+def _to_native_model_server_url(url: str) -> str:
+    """Return the server root without a trailing OpenAI ``/v1`` suffix."""
+    stripped = url.strip().rstrip("/")
+    parsed = urlsplit(stripped)
+    path = parsed.path.rstrip("/")
+    if path.endswith("/v1"):
+        path = path[:-3].rstrip("/")
+    return urlunsplit((parsed.scheme, parsed.netloc, path, parsed.query, parsed.fragment))
 
 
 class Settings(BaseSettings):
@@ -34,9 +55,13 @@ class Settings(BaseSettings):
     qdrant_collection: str = Field("schema_index", description="Qdrant collection name (NDI_QDRANT_COLLECTION)")
 
     # LLM — vLLM / OpenAI-compatible
-    llm_base_url: str = Field(..., description="Base URL du serveur LLM OpenAI-compatible (NDI_LLM_BASE_URL)")
-    llm_api_key: str = Field("EMPTY", description="Clé API LLM (NDI_LLM_API_KEY)")
-    llm_model: str = Field(..., description="Modèle LLM pour les requêtes (NDI_LLM_MODEL)")
+    llm_base_url: str = Field("http://localhost:11434", description="Base URL du serveur LLM OpenAI-compatible (NDI_LLM_BASE_URL)")
+    llm_api_key: str = Field("ollama", description="Clé API LLM (NDI_LLM_API_KEY)")
+    llm_model: str = Field("qwen3:14b", description="Modèle LLM pour les requêtes (NDI_LLM_MODEL)")
+    llm_reasoning_effort: str = Field(
+        "high",
+        description="Niveau de reasoning demandé au serveur OpenAI-compatible (NDI_LLM_REASONING_EFFORT)",
+    )
     vision_model: str | None = Field(None, description="Modèle VLM pour l'analyse d'images (NDI_VISION_MODEL)")
     indexing_llm_model: str | None = Field(None, description="Modèle LLM pour l'indexation (NDI_INDEXING_LLM_MODEL)")
     llm_context_length: int = Field(32768, description="Taille du contexte LLM en tokens (NDI_LLM_CONTEXT_LENGTH)")
@@ -48,7 +73,7 @@ class Settings(BaseSettings):
     embedding_api_key: str | None = Field(
         None, description="Clé API embeddings (NDI_EMBEDDING_API_KEY) — si vide, utilise llm_api_key"
     )
-    embedding_model: str = Field(..., description="Modèle d'embedding (NDI_EMBEDDING_MODEL)")
+    embedding_model: str = Field("nomic-embed-text", description="Modèle d'embedding (NDI_EMBEDDING_MODEL)")
 
     retrieval_top_k: int = 6
     indexing_enabled: bool = True
@@ -84,12 +109,32 @@ class Settings(BaseSettings):
 
     # Computed helpers
     @property
+    def effective_llm_base_url(self) -> str:
+        return _normalize_openai_base_url(self.llm_base_url)
+
+    @property
+    def llm_native_base_url(self) -> str:
+        return _to_native_model_server_url(self.llm_base_url)
+
+    @property
     def effective_embedding_base_url(self) -> str:
-        return self.embedding_base_url or self.llm_base_url
+        return _normalize_openai_base_url(self.embedding_base_url or self.llm_base_url)
+
+    @property
+    def embedding_native_base_url(self) -> str:
+        return _to_native_model_server_url(self.embedding_base_url or self.llm_base_url)
 
     @property
     def effective_embedding_api_key(self) -> str:
         return self.embedding_api_key or self.llm_api_key
+
+    @property
+    def auth_required(self) -> bool:
+        if not self.auth_enabled:
+            return False
+        if self.api_key not in {None, "", "EMPTY", "empty"}:
+            return True
+        return self.environment != "local"
 
     model_config = SettingsConfigDict(env_prefix="NDI_", env_file=env_path, extra="ignore")
 

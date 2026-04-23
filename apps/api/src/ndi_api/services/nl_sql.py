@@ -697,6 +697,10 @@ def run_nl_sql_stream(question: str) -> Gen[dict, None, None]:
     timings: dict[str, float] = {}
 
     try:
+        streamed_thinking_parts: list[str] = []
+        used_correction = False
+        retrieved_doc_count = 0
+
         # 1. Route
         yield {"event": "status", "data": "Analyse de la question…"}
         plugin = get_plugin_manager().get_plugin()
@@ -719,6 +723,7 @@ def run_nl_sql_stream(question: str) -> Gen[dict, None, None]:
         else:
             reranked = []
             timings["retrieval_ms"] = round((time.perf_counter() - t0) * 1000, 1)
+        retrieved_doc_count = len(reranked)
 
         schema_context = plugin.get_query_context(question, reranked)
 
@@ -735,6 +740,8 @@ def run_nl_sql_stream(question: str) -> Gen[dict, None, None]:
         content_parts: list[str] = []
         for event_type, chunk in stream_llm_call(prompt):
             yield {"event": event_type, "data": chunk}
+            if event_type == "thinking":
+                streamed_thinking_parts.append(chunk)
             if event_type == "content":
                 content_parts.append(chunk)
 
@@ -747,6 +754,7 @@ def run_nl_sql_stream(question: str) -> Gen[dict, None, None]:
 
         # 5. Correction if needed
         if not is_valid:
+            used_correction = True
             yield {"event": "status", "data": "Correction de la requête…"}
             correction_prompt = (
                 f"[INSTRUCTIONS]\n{_get_system_prompt()}\n\n"
@@ -759,10 +767,42 @@ def run_nl_sql_stream(question: str) -> Gen[dict, None, None]:
             corrected_parts: list[str] = []
             for event_type, chunk in stream_llm_call(correction_prompt):
                 yield {"event": event_type, "data": chunk}
+                if event_type == "thinking":
+                    streamed_thinking_parts.append(chunk)
                 if event_type == "content":
                     corrected_parts.append(chunk)
             raw_sql = extract_sql("".join(corrected_parts))
             timings["sql_correct_ms"] = round((time.perf_counter() - t0) * 1000, 1)
+
+            is_valid, validation_error = plugin.validate_query(raw_sql)
+            if not is_valid:
+                yield {
+                    "event": "answer",
+                    "data": {
+                        "answer": (
+                            "Je n'ai pas pu transformer votre message en requête exploitable. "
+                            "Posez directement une question sur les données, par exemple : "
+                            "\"combien de lignes\", \"montre les 10 premières lignes\" ou "
+                            "\"quelles sont les valeurs distinctes de la colonne statut ?\""
+                        ),
+                        "query": raw_sql,
+                        "query_type": "sql" if plugin.mode == "sql" else "nosql",
+                        "rows": [],
+                        "row_count": 0,
+                        "question_type": "explanation",
+                        "confidence": 1.0,
+                        "thinking": (
+                            "".join(streamed_thinking_parts).strip()
+                            or (
+                                f"Mode: {route.upper()}\n"
+                                f"Contexte schéma consulté: {retrieved_doc_count} document(s)\n"
+                                "La requête générée est restée invalide après tentative de correction."
+                            )
+                        ),
+                        "_timings": timings,
+                    },
+                }
+                return
 
         # 6. Execute
         yield {"event": "status", "data": "Exécution de la requête…"}
@@ -786,6 +826,8 @@ def run_nl_sql_stream(question: str) -> Gen[dict, None, None]:
             answer_parts: list[str] = []
             for event_type, chunk in stream_llm_call(resp_prompt):
                 yield {"event": event_type, "data": chunk}
+                if event_type == "thinking":
+                    streamed_thinking_parts.append(chunk)
                 if event_type == "content":
                     answer_parts.append(chunk)
             answer = "".join(answer_parts).strip()
@@ -794,6 +836,13 @@ def run_nl_sql_stream(question: str) -> Gen[dict, None, None]:
             answer = f"Erreur lors de l'exécution : {error}"
         else:
             answer = "La requête n'a retourné aucun résultat."
+
+        fallback_thinking = (
+            f"Mode: {route.upper()}\n"
+            f"Contexte schéma consulté: {retrieved_doc_count} document(s)\n"
+            f"Validation: {'requête corrigée avant exécution' if used_correction else 'requête valide du premier coup'}\n"
+            f"Résultat: {'erreur d’exécution' if error else f'{len(rows)} ligne(s) retournée(s)'}"
+        )
 
         total_ms = round((time.time() - t_start) * 1000, 1)
         monitor.record("query", total_ms)
@@ -804,8 +853,13 @@ def run_nl_sql_stream(question: str) -> Gen[dict, None, None]:
             "data": {
                 "answer": answer,
                 "sql": raw_sql,
+                "query": raw_sql,
+                "query_type": "sql" if plugin.mode == "sql" else "nosql",
                 "rows": rows,
                 "row_count": len(rows),
+                "question_type": "query",
+                "confidence": 1.0,
+                "thinking": "".join(streamed_thinking_parts).strip() or fallback_thinking,
                 "_timings": timings,
             },
         }

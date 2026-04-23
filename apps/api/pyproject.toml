@@ -62,7 +62,3 @@ ignore = [
 
 [tool.ruff.lint.isort]
 known-first-party = ["ndi_api"]
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-pythonpath = ["src"]

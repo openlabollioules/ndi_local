@@ -1,6 +1,42 @@
 services:
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: ndi-api
+    environment:
+      NDI_QDRANT_URL: http://qdrant:6333
+      NDI_LLM_BASE_URL: http://host.docker.internal:11434
+      NDI_EMBEDDING_BASE_URL: http://host.docker.internal:11434
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "8001:8000"
+    volumes:
+      - ./apps/api/data:/app/data
+      - ./apps/api/logs:/app/logs
+      - ./apps/api/.env:/app/.env:ro
+    depends_on:
+      - qdrant
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:8001/api
+    container_name: ndi-web
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8001/api
+    ports:
+      - "3001:3000"
+    depends_on:
+      - api
+    restart: unless-stopped
+
   qdrant:
-    image: harbor.iss.naval-group.dev/docker.io/qdrant/qdrant
+    image: qdrant/qdrant:latest
     pull_policy: never
     container_name: ndi-qdrant
     ports:

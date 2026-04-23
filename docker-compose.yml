@@ -37,7 +37,7 @@ services:
 
   qdrant:
     image: qdrant/qdrant:latest
-    pull_policy: never
+    #pull_policy: never             # Use this line to prevent pulling the latest image from Docker Hub, useful for local development or air-gapped environments
     container_name: ndi-qdrant
     ports:
       - "6333:6333"   # REST API

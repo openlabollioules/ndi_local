@@ -309,7 +309,7 @@ class SQLPlugin(DataPlugin):
                 query_text=query,
             )
         except Exception as e:
-            return QueryResult(error=str(e), query_text=query)
+            return QueryResult(error=str(e))
 
     def preview_table(self, name: str, limit: int = 50, offset: int = 0) -> QueryResult:
         """Get a preview of a table with pagination."""

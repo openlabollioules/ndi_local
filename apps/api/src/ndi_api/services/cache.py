@@ -70,6 +70,9 @@ class TTLCache:
 
 
 # Global cache instances — TTLs configurable via NDI_CACHE_TTL_* env vars
+# FIXME: these are in-memory dicts. If uvicorn runs with multiple workers
+# (--workers N), each worker gets its own cache. Use Redis or a shared
+# cache backend if scaling beyond a single worker.
 from ndi_api.settings import settings as _settings
 
 nl_sql_cache = TTLCache(default_ttl=_settings.cache_ttl_query)

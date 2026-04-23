@@ -6,6 +6,7 @@
       "DOM.Iterable",
       "ES2020"
     ],
+    "types": ["node"], 
     "allowJs": false,
     "skipLibCheck": true,
     "strict": true,

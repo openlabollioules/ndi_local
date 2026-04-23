@@ -194,6 +194,9 @@ class SQLPlugin(DataPlugin):
         on_step: Callable[[str, str], None] | None = None,
     ) -> str:
         """Ingest a DataFrame into DuckDB."""
+        # Validate table name before using it in SQL
+        self._validate_sql_identifier(name)
+
         # Normalize column names
         if on_step:
             on_step("normalize_columns", "Normalisation des noms de colonnes")

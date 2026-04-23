@@ -17,7 +17,7 @@ FROM node:20-alpine AS runner
 
 WORKDIR /app
 ENV NODE_ENV=production \
-    PORT=3000
+    PORT=3001
 ARG NEXT_PUBLIC_API_URL=http://localhost:8000/api
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
 
@@ -28,6 +28,6 @@ COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/next.config.mjs ./next.config.mjs
 
-EXPOSE 3000
+EXPOSE 3001
 
-CMD ["npm", "run", "start", "--", "-p", "3000"]
+CMD ["npm", "run", "start", "--", "-p", "3001"]

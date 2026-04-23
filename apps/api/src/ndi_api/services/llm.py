@@ -150,7 +150,7 @@ def _chat_openai_kwargs(model: str) -> dict:
         "default_headers": {"Accept": "application/json"},
     }
     if "11434" in settings.llm_native_base_url and settings.llm_reasoning_effort:
-        kwargs["model_kwargs"] = {"reasoning_effort": settings.llm_reasoning_effort}
+        kwargs["reasoning_effort"] = settings.llm_reasoning_effort
     return kwargs
 
 

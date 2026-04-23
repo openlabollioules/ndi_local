@@ -187,7 +187,7 @@ async def purge_ingestion(request: Request, plugin: PluginDep) -> PurgeResponse:
     message = f"Données purgées ({plugin.name} mode)."
     return PurgeResponse(
         duckdb_cleared=plugin_cleared if plugin.name == "sql" else False,
-        chroma_cleared=qdrant_cleared,
+        qdrant_cleared=qdrant_cleared,
         message=message,
     )
 

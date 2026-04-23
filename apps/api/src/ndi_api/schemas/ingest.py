@@ -11,7 +11,7 @@ class IngestSummary(BaseModel):
 
 class PurgeResponse(BaseModel):
     duckdb_cleared: bool
-    chroma_cleared: bool  # kept for backward compat — actually tracks qdrant now
+    qdrant_cleared: bool
     message: str
 
 

@@ -267,7 +267,7 @@ export async function purgeData() {
 
   return response.json() as Promise<{
     duckdb_cleared: boolean;
-    chroma_cleared: boolean;
+    qdrant_cleared: boolean;
     message: string;
   }>;
 }

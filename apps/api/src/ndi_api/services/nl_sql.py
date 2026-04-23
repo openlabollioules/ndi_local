@@ -137,9 +137,9 @@ def _schema_context(state: NLState) -> dict:
     keywords = _extract_question_keywords(question)
     timings = state.get("_timings", {})
 
-    initial_k = int(os.getenv("NDI_RETRIEVAL_K", "20"))
-    final_k = int(os.getenv("NDI_RERANKER_FINAL_K", "8"))
-    use_reranker = os.getenv("NDI_USE_RERANKER", "true").lower() == "true"
+    initial_k = settings.retrieval_k
+    final_k = settings.reranker_final_k
+    use_reranker = settings.use_reranker
 
     # Get plugin for relations and schema context
     plugin = get_plugin_manager().get_plugin()

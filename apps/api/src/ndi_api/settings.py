@@ -1,13 +1,11 @@
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
-from dotenv import load_dotenv
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# Charger le fichier .env depuis le répertoire de l'API
+# Path to the .env file — used by BaseSettings below
 env_path = Path(__file__).parent.parent.parent / ".env"
-load_dotenv(env_path)
 
 
 def _normalize_openai_base_url(url: str) -> str:
@@ -94,6 +92,7 @@ class Settings(BaseSettings):
     reranker_type: str = Field("lightweight", description="Re-ranker type: lightweight, none (NDI_RERANKER_TYPE)")
     reranker_model: str = Field("bge-reranker-v2-m3", description="Re-ranker model name (NDI_RERANKER_MODEL)")
     retrieval_k: int = Field(10, description="Number of documents to retrieve before re-ranking (NDI_RETRIEVAL_K)")
+    reranker_final_k: int = Field(8, description="Documents to keep after re-ranking (NDI_RERANKER_FINAL_K)")
 
     # Cache TTLs (seconds, 0 = no caching)
     cache_ttl_query: int = Field(3600, description="TTL for NL-SQL query cache in seconds (NDI_CACHE_TTL_QUERY)")

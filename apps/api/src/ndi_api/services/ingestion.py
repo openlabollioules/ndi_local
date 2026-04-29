@@ -93,9 +93,9 @@ def _try_parse_dates(col_series: pd.Series) -> pd.Series | None:
     has_tz = sample.str.match(r"^\d{4}-\d{2}-\d{2}T").any()
 
     if has_tz:
-        parsed = pd.to_datetime(col_series, errors="coerce", utc=True)
+        parsed = pd.to_datetime(col_series, errors="coerce", utc=True, format="mixed")
     else:
-        parsed = pd.to_datetime(col_series, errors="coerce", dayfirst=not is_iso)
+        parsed = pd.to_datetime(col_series, errors="coerce", dayfirst=not is_iso, format="mixed")
 
     valid_ratio = parsed.notna().sum() / max(len(parsed), 1)
     if valid_ratio >= _DATE_VALID_THRESHOLD:

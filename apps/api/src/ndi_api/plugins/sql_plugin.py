@@ -194,8 +194,9 @@ class SQLPlugin(DataPlugin):
         on_step: Callable[[str, str], None] | None = None,
     ) -> str:
         """Ingest a DataFrame into DuckDB."""
-        # Validate table name before using it in SQL
-        self._validate_sql_identifier(name)
+        # Resolve stem + normalize first; raw upload names often include extensions (e.g. .csv)
+        table_name = self._safe_table_name(name)
+        self._validate_sql_identifier(table_name)
 
         # Normalize column names
         if on_step:
@@ -203,9 +204,6 @@ class SQLPlugin(DataPlugin):
 
         raw_names = [self.normalize_column_name(str(c)) for c in df.columns]
         df.columns = self._deduplicate_columns(raw_names)
-
-        # Generate safe table name
-        table_name = self._safe_table_name(name)
 
         # Write to DuckDB
         if on_step:
